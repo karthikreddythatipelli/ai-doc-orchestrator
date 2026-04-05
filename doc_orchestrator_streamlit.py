@@ -72,6 +72,22 @@ def ask_question(text, question):
     return safe_generate(f"Document:\n{text[:10000]}\nQuestion:{question}")
 
 # ----------------------------
+# NEW: STRUCTURED JSON EXTRACTION
+# ----------------------------
+def extract_structured_json(text):
+    prompt = f"""
+    Extract structured JSON from the document.
+    Include:
+    - risk_level (Low, Medium, High)
+    - important_entities
+    - summary_points
+
+    Document:
+    {text[:5000]}
+    """
+    return safe_generate(prompt)
+
+# ----------------------------
 # STREAMLIT UI
 # ----------------------------
 st.set_page_config(page_title="AI Document Orchestrator", layout="wide")
@@ -106,11 +122,17 @@ if "document_text" in st.session_state:
 
     st.text_area("Preview", text[:2000], height=200)
 
+    # ----------------------------
+    # BASIC FEATURES
+    # ----------------------------
     if st.button("📌 Summarize"):
         st.session_state["summary"] = summarize_text(text)
 
     if st.button("🔑 Key Points"):
         st.session_state["points"] = extract_key_points(text)
+
+    if st.button("📦 Extract JSON"):
+        st.session_state["json_data"] = extract_structured_json(text)
 
     if "summary" in st.session_state:
         st.subheader("Summary")
@@ -120,6 +142,10 @@ if "document_text" in st.session_state:
         st.subheader("Key Points")
         st.write(st.session_state["points"])
 
+    if "json_data" in st.session_state:
+        st.subheader("📦 Structured Data (JSON)")
+        st.write(st.session_state["json_data"])
+
     # ----------------------------
     # Q&A
     # ----------------------------
@@ -127,6 +153,7 @@ if "document_text" in st.session_state:
 
     if st.button("Ask"):
         if q:
+            st.session_state["question"] = q
             st.session_state["answer"] = ask_question(text, q)
         else:
             st.warning("Enter a question")
@@ -136,37 +163,57 @@ if "document_text" in st.session_state:
         st.write(st.session_state["answer"])
 
     # ----------------------------
-    # EMAIL (WEBHOOK)
+    # NEW: CONDITIONAL EMAIL TRIGGER
     # ----------------------------
-    st.subheader("📧 Send Summary via Email")
+    st.subheader("🚨 Send Alert Mail")
 
-    email = st.text_input("Enter email")
+    email = st.text_input("Enter Recipient Email ID")
 
-    if st.button("Send Email"):
-        if "summary" in st.session_state and email:
+    if st.button("Send Alert Mail"):
+        if email and "summary" in st.session_state:
 
-            if not WEBHOOK_URL:
-                st.error("❌ WEBHOOK_URL not configured")
-            else:
-                try:
-                    response = requests.post(
-                        WEBHOOK_URL,
-                        json={
-                            "email": email,
-                            "summary": st.session_state["summary"]
-                        },
-                        timeout=10
-                    )
+            payload = {
+                "email": email,
+                "document_text": st.session_state.get("document_text", ""),
+                "summary": st.session_state.get("summary", ""),
+                "question": st.session_state.get("question", ""),
+                "answer": st.session_state.get("answer", ""),
+                "json_data": st.session_state.get("json_data", "")
+            }
 
-                    if response.status_code == 200:
-                        st.success("🚀 Email sent successfully!")
-                    else:
-                        st.error(f"❌ Failed: {response.text}")
+            try:
+                response = requests.post(WEBHOOK_URL, json=payload, timeout=15)
 
-                except Exception as e:
-                    st.error(f"❌ Error: {e}")
+                if response.status_code == 200:
+                    data = response.json()
+
+                    st.session_state["final_answer"] = data.get("final_answer")
+                    st.session_state["email_body"] = data.get("email_body")
+                    st.session_state["status"] = data.get("status")
+
+                else:
+                    st.error("❌ Webhook failed")
+
+            except Exception as e:
+                st.error(f"❌ Error: {e}")
+
         else:
-            st.warning("⚠️ Generate summary and enter email first")
+            st.warning("⚠️ Enter email and generate summary first")
+
+    # ----------------------------
+    # DISPLAY FINAL OUTPUT
+    # ----------------------------
+    if "final_answer" in st.session_state:
+        st.subheader("🧠 Final Analytical Answer")
+        st.write(st.session_state["final_answer"])
+
+    if "email_body" in st.session_state:
+        st.subheader("📧 Generated Email Body")
+        st.write(st.session_state["email_body"])
+
+    if "status" in st.session_state:
+        st.subheader("📊 Email Automation Status")
+        st.success(st.session_state["status"])
 
 else:
     st.info("Upload a document to get started.")
