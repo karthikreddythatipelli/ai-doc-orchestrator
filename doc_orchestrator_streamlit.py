@@ -22,6 +22,14 @@ genai.configure(api_key=API_KEY)
 model = genai.GenerativeModel("gemini-2.5-flash")
 
 # ----------------------------
+# WEBHOOK (LOCAL + CLOUD)
+# ----------------------------
+if "WEBHOOK_URL" in st.secrets:
+    WEBHOOK_URL = st.secrets["WEBHOOK_URL"]
+else:
+    WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+
+# ----------------------------
 # FILE PROCESSING
 # ----------------------------
 def extract_text_from_pdf(file):
@@ -112,7 +120,9 @@ if "document_text" in st.session_state:
         st.subheader("Key Points")
         st.write(st.session_state["points"])
 
+    # ----------------------------
     # Q&A
+    # ----------------------------
     q = st.text_input("Ask question")
 
     if st.button("Ask"):
@@ -125,30 +135,36 @@ if "document_text" in st.session_state:
         st.write("### Answer")
         st.write(st.session_state["answer"])
 
-    # EMAIL
+    # ----------------------------
+    # EMAIL (WEBHOOK)
+    # ----------------------------
     st.subheader("📧 Send Summary via Email")
 
     email = st.text_input("Enter email")
 
     if st.button("Send Email"):
         if "summary" in st.session_state and email:
-            try:
-                response = requests.post(
-                    "https://karthikreddy3131.app.n8n.cloud/webhook/doc_orchestrator",
-                    json={
-                        "email": email,
-                        "summary": st.session_state["summary"]
-                    },
-                    timeout=10
-                )
 
-                if response.status_code == 200:
-                    st.success("🚀 Email sent successfully!")
-                else:
-                    st.error(f"❌ Failed: {response.text}")
+            if not WEBHOOK_URL:
+                st.error("❌ WEBHOOK_URL not configured")
+            else:
+                try:
+                    response = requests.post(
+                        WEBHOOK_URL,
+                        json={
+                            "email": email,
+                            "summary": st.session_state["summary"]
+                        },
+                        timeout=10
+                    )
 
-            except Exception as e:
-                st.error(f"❌ Error: {e}")
+                    if response.status_code == 200:
+                        st.success("🚀 Email sent successfully!")
+                    else:
+                        st.error(f"❌ Failed: {response.text}")
+
+                except Exception as e:
+                    st.error(f"❌ Error: {e}")
         else:
             st.warning("⚠️ Generate summary and enter email first")
 
