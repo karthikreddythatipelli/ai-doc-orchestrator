@@ -1,5 +1,3 @@
-%%writefile doc_orchestrator_streamlit.py
-
 import streamlit as st
 import os
 import hashlib
